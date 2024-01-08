@@ -274,19 +274,18 @@ class PPOAgent(habitat.Agent):
 
         if self.debug:
             ckpt_paths = dict(
-                # nav="nav_v0_disc_SCR/221007.seed=100.default/checkpoints/ckpt.-1.pth",
-                # pick="pick_v0_joint_SCR/221007.seed=100.default/checkpoints/ckpt.-1.pth",
-                # place="place_v0_joint_SCR/221007.seed=100.default/checkpoints/ckpt.-1.pth",
                 nav="nav_v0_disc_SCR/221012.seed=100.default/checkpoints/ckpt.-1.pth",
-                # nav="nav_v0A_disc_SCR/221013.seed=100.default/checkpoints/ckpt.-1.pth",
                 pick="pick_v0_joint_SCR/221012.seed=100.default/checkpoints/ckpt.-1.pth",
                 place="place_v0_joint_SCR/221012.seed=100.default/checkpoints/ckpt.-1.pth",
             )
         else:
             ckpt_paths = dict(
-                nav="nav.pth",
-                pick="pick.pth",
-                place="place.pth",
+                # nav="nav.pth",
+                # pick="pick.pth",
+                # place="place.pth",
+                nav="nav_v1_disc_SCR/checkpoints/ckpt.10.pth",
+                pick="pick_v1_joint_SCR/seed=101/checkpoints/ckpt.5.pth",
+                place="place_v1_joint_SCR/checkpoints/ckpt.10.pth",
             )
 
         # Individual skills
