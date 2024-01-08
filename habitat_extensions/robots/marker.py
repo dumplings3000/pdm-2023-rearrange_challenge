@@ -43,3 +43,17 @@ class Marker:
     def set_semantic_id(self, semantic_id: int):
         for node in self.art_obj.get_link_visual_nodes(self.link_id):
             node.semantic_id = semantic_id
+
+    # -------------------------------------------------------------------------- #
+    # For challenge
+    # -------------------------------------------------------------------------- #
+    @property
+    def offset_position(self):
+        return self.offset
+
+    @property
+    def ao_parent(self):
+        return self.art_obj
+
+    def get_current_position(self):
+        return self.pos

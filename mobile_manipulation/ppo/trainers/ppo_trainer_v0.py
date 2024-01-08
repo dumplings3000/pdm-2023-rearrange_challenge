@@ -494,7 +494,7 @@ class PPOTrainerV0(BaseTrainer):
         self.envs = construct_envs(
             config,
             get_env_class(config.ENV_NAME),
-            split_dataset=config.get("SPLIT_DATASET", True),
+            split_dataset=config.get("SPLIT_DATASET", False),
             workers_ignore_signals=False,
             auto_reset_done=auto_reset_done,
             wrappers=[HabitatActionWrapper],
@@ -654,7 +654,8 @@ class PPOTrainerV0(BaseTrainer):
             os.makedirs(log_dir, exist_ok=True)
             logger.add_filehandler(self.config.LOG_FILE)
 
-        writer = TensorboardWriter(self.config.TENSORBOARD_DIR, flush_secs=30)
+        writer = TensorboardWriter("", flush_secs=30)
+        # writer = TensorboardWriter(self.config.TENSORBOARD_DIR, flush_secs=30)
 
         if self.config.EVAL.CKPT_PATH:
             ckpt_path = self.config.EVAL.CKPT_PATH

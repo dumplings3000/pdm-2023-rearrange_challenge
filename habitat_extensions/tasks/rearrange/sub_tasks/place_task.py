@@ -2,14 +2,17 @@ import magnum as mn
 import numpy as np
 from habitat import logger
 from habitat.core.registry import registry
+from scipy.spatial.transform import Rotation
 
-from habitat_extensions.utils import art_utils
+from habitat_extensions.utils import art_utils, obj_utils
 
 from ..task import RearrangeEpisode, RearrangeTask
 from ..task_utils import (
     check_start_state,
     compute_region_goals_v1,
     compute_start_state,
+    filter_by_island_radius,
+    filter_positions,
     sample_noisy_start_state,
 )
 from .pick_task import RearrangePickTask
@@ -26,6 +29,9 @@ class RearrangePlaceTask(RearrangePickTask):
             tgt_indices = [self._config.TARGET_INDEX]
         else:
             tgt_indices = self.np_random.permutation(n_targets)
+
+        # Recompute due to articulation
+        self._maybe_recompute_navmesh(episode)
 
         # ---------------------------------------------------------------------------- #
         # Sample a collision-free start state
@@ -78,10 +84,25 @@ class RearrangePlaceTask(RearrangePickTask):
                 )
             )
 
+        # Restore original navmesh
+        self._maybe_restore_navmesh(episode)
+
         self._sim.robot.base_pos = start_state[0]
         self._sim.robot.base_ori = start_state[1]
-        self._sim.robot.open_gripper()
-        self._sim.gripper.snap_to_obj(self.tgt_obj)
+        # self._sim.robot.open_gripper()
+        # self._sim.gripper.snap_to_obj(self.tgt_obj)
+        aabb = obj_utils.get_aabb(self.tgt_obj)
+        aabb_size = np.array(aabb.size())
+        rel_pos = self.np_random.uniform(-aabb_size / 2, aabb_size / 2)
+        rel_rot = Rotation.random(random_state=self.np_random).as_matrix()
+        rel_T = mn.Matrix4.from_(mn.Matrix3(rel_rot), mn.Vector3(rel_pos))
+        self.tgt_obj.transformation = self._sim.robot.ee_T @ rel_T
+        self._sim.gripper.snap_to_obj(
+            self.tgt_obj.object_id,
+            force=False,
+            should_open_gripper=False,
+            rel_pos=rel_pos,
+        )
         self._sim.internal_step_by_time(0.1)
 
     def _set_target(self, index):
@@ -107,7 +128,7 @@ class RearrangePlaceTask(RearrangePickTask):
                     episode.episode_id, self.tgt_idx
                 )
             )
-            return None
+            # return None
 
         pos_noise = self._config.get("BASE_NOISE", 0.05)
         ori_noise = self._config.get("BASE_ANGLE_NOISE", 0.15)
@@ -138,7 +159,8 @@ class RearrangePlaceTask(RearrangePickTask):
                 self,
                 *start_state,
                 task_type="place",
-                max_ik_error=max_ik_error,
+                # max_ik_error=max_ik_error,
+                max_ik_error=None,
                 max_collision_force=0.0,
                 verbose=verbose,
             )
@@ -171,8 +193,12 @@ class RearrangePlaceTaskV1(RearrangePlaceTask):
                 episode.episode_id
             )
         else:
+            self._maybe_recompute_navmesh(episode, disable=False)
             start_pos, _ = compute_start_state(self._sim, self.place_goal)
             height = start_pos[1]
+            # A hack to avoid stair
+            if height > 0.2:
+                height = 0.11094765
             T = mn.Matrix4.translation(self.place_goal)
             # start_positions = compute_start_positions_from_map_v1(
             start_positions = compute_region_goals_v1(
@@ -182,8 +208,21 @@ class RearrangePlaceTaskV1(RearrangePlaceTask):
                 radius=self._config.START_REGION_SIZE,
                 height=height,
                 max_radius=self._config.MAX_REGION_SIZE,
+                postprocessing=False,
                 debug=False,
             )
+            self._maybe_restore_navmesh(episode, disable=False)
+            start_positions = filter_by_island_radius(
+                self._sim, start_positions, threshold=0.5
+            )
+            # Post-processing for picking or placing in fridge
+            if self._has_target_in_fridge():
+                start_positions = filter_positions(
+                    start_positions,
+                    self._sim.markers["fridge_push_point"].transformation,
+                    direction=[-1.0, 0.0, 0.0],
+                    clearance=0.4,
+                )
             self._set_cache_start_positions(
                 episode.episode_id, start_positions
             )
@@ -231,3 +270,15 @@ class RearrangePlaceTaskV1(RearrangePlaceTask):
                 if verbose:
                     print(f"Find a valid start state at {i}-th trial")
                 return start_state
+
+    def _maybe_recompute_navmesh(
+        self, episode: RearrangeEpisode, disable=True
+    ):
+        if disable:
+            return
+        super()._maybe_recompute_navmesh(episode)
+
+    def _maybe_restore_navmesh(self, episode: RearrangeEpisode, disable=True):
+        if disable:
+            return
+        super()._maybe_restore_navmesh(episode)

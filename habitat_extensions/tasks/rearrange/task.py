@@ -8,6 +8,7 @@ import attr
 import habitat_sim
 import magnum as mn
 import numpy as np
+from habitat import logger
 from habitat.config import Config
 from habitat.core.dataset import Dataset, Episode
 from habitat.core.embodied_task import EmbodiedTask
@@ -32,6 +33,7 @@ class RearrangeEpisode(Episode):
     markers: List[Dict]
     target_receptacles: List[Tuple[str, int]]
     goal_receptacles: List[Tuple[str, int]]
+    name_to_receptacle: Dict[str, str] = attr.ib(factory=dict)
 
     # path to the SceneDataset config file
     scene_dataset_config: str = attr.ib(
@@ -152,11 +154,16 @@ class RearrangeTask(EmbodiedTask):
         self._sim.internal_step_by_time(0.1)
 
     def _get_start_ee_pos(self):
-        # NOTE(jigu): defined in pybullet link frame
-        start_ee_pos = np.array(
-            self._config.get("START_EE_POS", [0.5, 0.0, 1.0]),
-            dtype=np.float32,
+        # # NOTE(jigu): defined in pybullet link frame
+        # start_ee_pos = np.array(
+        #     self._config.get("START_EE_POS", [0.5, 0.0, 1.0]),
+        #     dtype=np.float32,
+        # )
+
+        self._sim.pyb_robot.set_joint_states(
+            self._sim.robot.params.arm_init_params
         )
+        start_ee_pos = self._sim.pyb_robot.ee_state[4]
 
         # The noise can not be too large (e.g. 0.05)
         ee_noise = self._config.get("EE_NOISE", 0.025)
@@ -165,21 +172,36 @@ class RearrangeTask(EmbodiedTask):
             noise = np.clip(noise, -ee_noise * 2, ee_noise * 2)
             start_ee_pos = start_ee_pos + noise
 
-        return start_ee_pos
+        return np.float32(start_ee_pos)
+
+    # def _initialize_ee_pos(self, start_ee_pos=None):
+    #     """Initialize end-effector position."""
+    #     if start_ee_pos is None:
+    #         start_ee_pos = self._get_start_ee_pos()
+
+    #     # print("start_ee_pos", start_ee_pos)
+    #     self.start_ee_pos = start_ee_pos
+    #     self._sim.robot.reset_arm()
+    #     self._sim.sync_pyb_robot()
+    #     arm_tgt_qpos = self._sim.pyb_robot.IK(self.start_ee_pos, max_iters=100)
+    #     # err = self._sim.pyb_robot.compute_IK_error(start_ee_pos, arm_tgt_qpos)
+    #     self._sim.robot.arm_joint_pos = arm_tgt_qpos
+    #     self._sim.robot.arm_motor_pos = arm_tgt_qpos
 
     def _initialize_ee_pos(self, start_ee_pos=None):
-        """Initialize end-effector position."""
-        if start_ee_pos is None:
-            start_ee_pos = self._get_start_ee_pos()
-
-        # print("start_ee_pos", start_ee_pos)
-        self.start_ee_pos = start_ee_pos
         self._sim.robot.reset_arm()
-        self._sim.sync_pyb_robot()
-        arm_tgt_qpos = self._sim.pyb_robot.IK(self.start_ee_pos, max_iters=100)
-        # err = self._sim.pyb_robot.compute_IK_error(start_ee_pos, arm_tgt_qpos)
+        noise = self.np_random.normal(
+            0, 0.05, size=len(self._sim.robot.arm_joint_pos)
+        )
+        arm_tgt_qpos = self._sim.robot.arm_joint_pos + np.clip(
+            noise, -0.1, 0.1
+        )
         self._sim.robot.arm_joint_pos = arm_tgt_qpos
         self._sim.robot.arm_motor_pos = arm_tgt_qpos
+
+        self._sim.sync_pyb_robot()
+        self.start_ee_pos = self._sim.pyb_robot.ee_state[4]
+        # print("ee_pos", self._sim.robot.base_T.inverted().transform_point(self._sim.robot.gripper_pos))
 
     def _reset_stats(self):
         # NOTE(jigu): _is_episode_active is on-the-fly set in super().step()
@@ -254,3 +276,44 @@ class RearrangeTask(EmbodiedTask):
 
     def _has_target_in_container(self):
         return self._has_target_in_drawer() or self._has_target_in_fridge()
+
+    # -------------------------------------------------------------------------- #
+    # Navmesh
+    # -------------------------------------------------------------------------- #
+    def _maybe_recompute_navmesh(self, episode: RearrangeEpisode):
+        _recompute_navmesh = False
+        for ao_state in episode.ao_states.values():
+            if any(x > 0.0 for x in ao_state.values()):
+                _recompute_navmesh = True
+                break
+        if _recompute_navmesh:
+            self._sim._recompute_navmesh()
+        self._recompute_navmesh = _recompute_navmesh
+
+    def _maybe_restore_navmesh(self, episode: RearrangeEpisode):
+        if not self._recompute_navmesh:
+            return
+        navmesh_path = episode.scene_id.replace("configs/scenes", "navmeshes")
+        navmesh_path = navmesh_path.replace("scene_instance.json", "navmesh")
+        self._sim.pathfinder.load_nav_mesh(navmesh_path)
+        self._sim._cache_largest_island()
+        self._recompute_navmesh = False
+
+    def _check_art_abnormal(self, episode: RearrangeEpisode):
+        art_obj_mgr = self._sim.get_articulated_object_manager()
+        flag = True
+        for ao_handle, ao_state in episode.ao_states.items():
+            art_obj = art_obj_mgr.get_object_by_handle(ao_handle)
+            qpos = art_obj.joint_positions
+            for link_id, joint_state in ao_state.items():
+                pos_offset = art_obj.get_link_joint_pos_offset(int(link_id))
+                if np.abs(qpos[pos_offset] - joint_state) > 0.05:
+                    flag = True
+                    break
+
+        if flag:
+            logger.info(
+                "Episode {}({}): detected abnormal".format(
+                    episode.episode_id, episode.scene_id
+                )
+            )
