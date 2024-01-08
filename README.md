@@ -3,13 +3,11 @@
 ```bash
 # Ensure the latest submodules
 git submodule update --init --recursive
-# Create a conda env
-conda create -n hab-mm python=3.7
+
 # Activate the conda env
-conda activate hab-mm
-# Install habitat-sim from source
+conda activate habitat
 conda install cmake=3.14.0 patchelf ninja
-cd habitat-sim && pip install -r requirements.txt && python setup.py install --bullet --headless && cd ..
+
 # Install habitat-lab
 cd habitat-lab && pip install -r requirements.txt && python setup.py develop && cd ..
 # Install requirements
