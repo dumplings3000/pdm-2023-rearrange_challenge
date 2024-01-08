@@ -1,0 +1,29 @@
+{
+    "asset": {
+        "version": "2.0"
+    },
+    "meshes": [
+        {
+            "primitives": [
+                {
+                    "attributes": {},
+                    "material": 4
+                }
+            ]
+        }
+    ],
+    "materials": [
+        {}, {}, {}, {}
+    ],
+    "nodes": [
+        {}, {}, {},
+        {
+            "mesh": 0
+        }
+    ],
+    "scenes": [
+        {
+            "nodes": [3]
+        }
+    ]
+}
