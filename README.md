@@ -8,6 +8,10 @@ git submodule update --init --recursive
 conda activate habitat
 conda install cmake=3.14.0 patchelf ninja
 
+#Install habitat-sim and download data
+conda install -y habitat-sim-rearrange-challenge-2022  withbullet  headless -c conda-forge -c aihabitat
+python -m habitat_sim.utils.datasets_download --uids rearrange_task_assets
+
 # Install habitat-lab
 cd habitat-lab && pip install -r requirements.txt && python setup.py develop && cd ..
 # Install requirements
