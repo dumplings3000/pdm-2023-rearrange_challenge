@@ -32,7 +32,7 @@ python mobile_manipulation/run_ppo.py --cfg configs/rearrange/skills/tidy_house/
 # Evaluate the latest checkpoint of a skill saved at "data/results/rearrange/skills/tidy_house/pick_v1_joint_SCR/seed=100"
 python mobile_manipulation/run_ppo.py --cfg configs/rearrange/skills/tidy_house/pick_v1_joint_SCR.yaml --run-type eval --run-type eval PREFIX seed=100
 ```
-### Evaluate a HAB (Home Assistant Benchmark) task
+### Evaluate a task
 
 ```bash
 # Interactively visualize results
